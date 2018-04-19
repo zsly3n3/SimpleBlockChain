@@ -12,6 +12,7 @@ type blockChain struct {
 	pendingTransactions []trans.Transaction //该链中等待处理的交易列表
 	miningReward float64 //挖矿成功的奖励数目
 	miningRewardData *rewardData //保存挖矿成功后的一些数据
+	m *sync.RWMutex //读写互斥量
 }
 
 type rewardData struct {
@@ -29,6 +30,7 @@ func Create() *blockChain{
 	bc.Chain[0]= *block
 	bc.diff = 4 
 	bc.miningReward = 100.0
+	bc.m = new(sync.RWMutex)
 	bc.miningRewardData = &rewardData{
 		m: new(sync.RWMutex),
 		roundOver:false,miningRewardAddress:""}
@@ -42,7 +44,10 @@ func (bc *blockChain) createGenesisBlock() *block{
 
 /*获取链上最后一个块*/
 func (bc *blockChain) getLatestBlock() *block{
-    return &bc.Chain[len(bc.Chain)-1]
+	bc.m.RLock()
+	b:=&bc.Chain[len(bc.Chain)-1]
+	bc.m.RUnlock()
+    return b
 }
 
 /*挖矿*/
@@ -53,10 +58,12 @@ func (bc *blockChain)MinePendingTransactions(miningRewardAddress string,diff int
 	address:= bc.miningRewardData.miningRewardAddress
 	bc.miningRewardData.m.RUnlock()
 	if miningRewardAddress == address{//该钱包地址等于成功地址
+		bc.m.Lock()
 		bc.Chain=append(bc.Chain,*b)//在链上添加该块
 		bc.pendingTransactions =  make([]trans.Transaction,1)//重置待处理交易列表,初始一条交易信息
 		t:=trans.Create("",miningRewardAddress,bc.miningReward)//发送奖励
 		bc.pendingTransactions[0]=*t
+		bc.m.Unlock()
 		nonce_str:=fmt.Sprintf("%d", b.nonce)
 		fmt.Println(miningRewardAddress+" Mining successed ! nonce: "+nonce_str)
 	}
